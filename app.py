@@ -31,23 +31,20 @@ alarm_state = {
 }
 
 def get_calendar_events():
-    creds = None
+    import json
+    from google.oauth2 import service_account
     
-    token_json = os.getenv('GOOGLE_TOKEN')
-    if token_json:
-        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+    service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT'))
+    creds = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=['https://www.googleapis.com/auth/calendar.readonly']
+    )
     
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            raise Exception("No valid credentials available")
-
     service = build('calendar', 'v3', credentials=creds)
-
+    
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     end = (datetime.datetime.utcnow() + datetime.timedelta(hours=18)).isoformat() + 'Z'
-
+    
     events_result = service.events().list(
         calendarId=os.getenv('GOOGLE_CALENDAR_ID', 'primary'),
         timeMin=now,
@@ -56,7 +53,7 @@ def get_calendar_events():
         singleEvents=True,
         orderBy='startTime'
     ).execute()
-
+    
     return events_result.get('items', [])
 
 def generate_wakeup_message(events, escalation_level=1, reminders=""):
