@@ -235,7 +235,11 @@ def set_alarm():
     reminders = data.get('reminders', '')
     alarm_state['reminders'] = reminders
     hour, minute = map(int, wake_time.split(':'))
-    scheduler.reschedule_job('main_alarm', trigger='cron', hour=hour, minute=minute)
+    try:
+        scheduler.remove_job('main_alarm')
+    except:
+        pass
+    scheduler.add_job(trigger_alarm, 'cron', hour=hour, minute=minute, id='main_alarm')
     return jsonify({"success": True, "time": wake_time})
 
 # ── Scheduler ───────────────────────────────────────────
