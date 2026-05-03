@@ -27,6 +27,7 @@ alarm_state = {
     "escalation_level": 1,
     "message": "",
     "events": []
+    "reminders": ""
 }
 
 def get_calendar_events():
@@ -59,7 +60,7 @@ def get_calendar_events():
 
     return events_result.get('items', [])
 
-def generate_wakeup_message(events, escalation_level=1):
+def generate_wakeup_message(events, escalation_level=1, reminders=""):
     client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
     events_text = ""
@@ -95,6 +96,9 @@ Generate a short spoken wake-up message (2-3 sentences max, under 40 words).
 
 Today's schedule:
 {events_text}
+
+Personal reminders:
+{reminders if reminders else "None provided."}
 
 Tone: {tone}
 
@@ -213,6 +217,13 @@ def test_alarm():
 @app.route('/health')
 def health():
     return jsonify({"status": "ok", "time": datetime.datetime.now().isoformat()})
+
+@app.route('/api/reminders', methods=['POST'])
+def set_reminders():
+    global alarm_state
+    data = request.get_json()
+    alarm_state["reminders"] = data.get("reminders", "")
+    return jsonify({"success": True})
 
 # ── Scheduler ───────────────────────────────────────────
 
