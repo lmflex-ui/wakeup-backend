@@ -229,7 +229,7 @@ def set_reminders():
 scheduler = BackgroundScheduler()
 
 # Main alarm - 6:30am every day
-scheduler.add_job(trigger_alarm, 'cron', hour=6, minute=30, id='main_alarm')
+scheduler.add_job(trigger_alarm, 'cron', hour=16, minute=10, id='main_alarm')
 
 # Escalation checks every 5 minutes
 scheduler.add_job(escalate_alarm, 'interval', minutes=5, id='escalation')
