@@ -26,7 +26,7 @@ alarm_state = {
     "confirmed": False,
     "escalation_level": 1,
     "message": "",
-    "events": []
+    "events": [],
     "reminders": ""
 }
 
