@@ -49,7 +49,7 @@ def generate_wakeup_message(events, escalation_level=1, reminders=""):
     events_text = ""
     if events:
         for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
+            start = event['start'] if isinstance(event['start'], str) else event['start'].get('dateTime', event['start'].get('date'))
             try:
                 dt = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
                 time_str = dt.strftime('%I:%M %p')
