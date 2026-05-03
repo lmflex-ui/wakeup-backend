@@ -4,7 +4,6 @@ import json
 import anthropic
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
@@ -21,7 +20,8 @@ alarm_state = {
     "message": "",
     "events": [],
     "reminders": "",
-    "alarm_time": {"hour": 6, "minute": 30}
+    "alarm_hour": None,
+    "alarm_minute": None
 }
 
 def get_calendar_events():
@@ -49,20 +49,22 @@ def generate_wakeup_message(events, escalation_level=1, reminders=""):
     events_text = ""
     if events:
         for event in events:
-            start = event['start'] if isinstance(event['start'], str) else event['start'].get('dateTime', event['start'].get('date'))
+            start = event.get('start', '')
+            if isinstance(start, dict):
+                start = start.get('dateTime', start.get('date', ''))
             try:
                 dt = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
                 time_str = dt.strftime('%I:%M %p')
             except:
                 time_str = start
-            events_text += f"- {event['summary']} at {time_str}\n"
+            events_text += f"- {event.get('summary', 'Event')} at {time_str}\n"
     else:
         events_text = "No specific events scheduled today."
 
     tones = {
-        1: "friendly and upbeat, like a real friend who knows your schedule. Mention the most important thing today.",
+        1: "friendly and real, like a friend who knows your life. Mention the most important thing today.",
         2: "more insistent and urgent. Emphasize what's at stake. They need to get up NOW.",
-        3: "very direct and persistent. Staying in bed is not an option. Get specific about consequences.",
+        3: "very direct. Staying in bed is not an option. Get specific about consequences.",
         4: "extremely urgent. Final warning. Be relentless. Do not let them go back to sleep."
     }
     tone = tones.get(escalation_level, tones[4])
@@ -85,9 +87,9 @@ Tone: {tone}
 
 Rules:
 - Use actual event names and times for urgency
-- Speak directly, second person ("you")
+- Speak directly, second person
 - No emojis, no special characters, no markdown
-- Sound like a real person talking, not a robot
+- Sound like a real person, not a robot
 - Make them WANT to or NEED to get up"""
         }]
     )
@@ -110,13 +112,13 @@ def verify_photo(image_data):
     )
     return "YES" in message.content[0].text.strip().upper()
 
-def trigger_alarm():
+def do_trigger_alarm():
     global alarm_state
     print(f"Alarm triggered at {datetime.datetime.now()}")
     try:
         events = get_calendar_events()
         alarm_state["events"] = [
-            {"summary": e.get("summary", "Event"), "start": e["start"].get("dateTime", e["start"].get("date"))}
+            {"summary": e.get("summary", "Event"), "start": e["start"].get("dateTime", e["start"].get("date", ""))}
             for e in events
         ]
     except Exception as e:
@@ -128,30 +130,71 @@ def trigger_alarm():
     alarm_state["escalation_level"] = 1
     alarm_state["message"] = message
 
-def escalate_alarm():
+def do_escalate():
     global alarm_state
     if alarm_state["active"] and not alarm_state["confirmed"]:
         level = min(alarm_state["escalation_level"] + 1, 4)
         alarm_state["escalation_level"] = level
         events = alarm_state.get("events", [])
-        event_objs = [{"summary": e["summary"], "start": {"dateTime": e["start"]}} for e in events]
-        message = generate_wakeup_message(event_objs, level, alarm_state.get("reminders", ""))
+        message = generate_wakeup_message(events, level, alarm_state.get("reminders", ""))
         alarm_state["message"] = message
-        print(f"Escalated to level {level}: {message}")
+        print(f"Escalated to level {level}")
 
 def check_alarm_time():
     global alarm_state
-    now = datetime.datetime.now()
-    target = alarm_state.get('alarm_time')
-    if target and not alarm_state['active'] and not alarm_state['confirmed']:
-        if now.hour == target['hour'] and now.minute == target['minute']:
-            print(f"Auto-triggering alarm at {now}")
-            trigger_alarm()
+    if alarm_state["alarm_hour"] is None:
+        return
+    if alarm_state["active"] or alarm_state["confirmed"]:
+        return
+    now = datetime.datetime.utcnow()
+    if now.hour == alarm_state["alarm_hour"] and now.minute == alarm_state["alarm_minute"]:
+        print(f"Auto-triggering alarm at {now}")
+        do_trigger_alarm()
 
-# Routes
 @app.route('/api/status')
 def status():
-    return jsonify(alarm_state)
+    return jsonify({
+        "active": alarm_state["active"],
+        "confirmed": alarm_state["confirmed"],
+        "escalation_level": alarm_state["escalation_level"],
+        "message": alarm_state["message"],
+        "events": alarm_state["events"]
+    })
+
+@app.route('/api/set-alarm', methods=['POST'])
+def set_alarm():
+    global alarm_state
+    data = request.get_json()
+    utc_time = data.get('time', '06:30')
+    reminders = data.get('reminders', '')
+    hour, minute = map(int, utc_time.split(':'))
+    alarm_state["alarm_hour"] = hour
+    alarm_state["alarm_minute"] = minute
+    alarm_state["reminders"] = reminders
+    alarm_state["active"] = False
+    alarm_state["confirmed"] = False
+    alarm_state["escalation_level"] = 1
+    alarm_state["message"] = ""
+    alarm_state["events"] = []
+    print(f"Alarm set for {hour:02d}:{minute:02d} UTC")
+    return jsonify({"success": True})
+
+@app.route('/api/test', methods=['POST'])
+def test_alarm():
+    global alarm_state
+    alarm_state["active"] = False
+    alarm_state["confirmed"] = False
+    do_trigger_alarm()
+    return jsonify({"success": True, "message": "Test alarm triggered"})
+
+@app.route('/api/reset', methods=['POST'])
+def reset_alarm():
+    global alarm_state
+    alarm_state["active"] = False
+    alarm_state["confirmed"] = False
+    alarm_state["escalation_level"] = 1
+    alarm_state["message"] = ""
+    return jsonify({"success": True})
 
 @app.route('/api/confirm', methods=['POST'])
 def confirm():
@@ -168,51 +211,24 @@ def confirm():
     else:
         return jsonify({"success": False, "message": "That doesn't look like the kitchen. Try again."}), 400
 
-@app.route('/api/test', methods=['POST'])
-def test_alarm():
-    global alarm_state
-    trigger_alarm()
-    return jsonify({"success": True, "message": "Test alarm triggered"})
-
-@app.route('/api/reset', methods=['POST'])
-def reset_alarm():
-    global alarm_state
-    alarm_state["active"] = False
-    alarm_state["confirmed"] = False
-    alarm_state["escalation_level"] = 1
-    alarm_state["message"] = ""
-    return jsonify({"success": True})
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "ok", "time": datetime.datetime.now().isoformat()})
-
 @app.route('/api/upcoming')
 def upcoming():
     try:
         events = get_calendar_events()
-        return jsonify({"events": [{"summary": e.get("summary","Event"), "start": e["start"].get("dateTime", e["start"].get("date"))} for e in events]})
+        return jsonify({"events": [
+            {"summary": e.get("summary", "Event"), "start": e["start"].get("dateTime", e["start"].get("date", ""))}
+            for e in events
+        ]})
     except Exception as ex:
         return jsonify({"events": [], "error": str(ex)})
 
-@app.route('/api/set-alarm', methods=['POST'])
-def set_alarm():
-    global alarm_state
-    data = request.get_json()
-    wake_time = data.get('time', '06:30')
-    reminders = data.get('reminders', '')
-    alarm_state['reminders'] = reminders
-    hour, minute = map(int, wake_time.split(':'))
-    alarm_state['alarm_time'] = {'hour': hour, 'minute': minute}
-    alarm_state['active'] = False
-    alarm_state['confirmed'] = False
-    print(f"Alarm set for {hour:02d}:{minute:02d}")
-    return jsonify({"success": True, "time": wake_time})
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok", "time": datetime.datetime.utcnow().isoformat()})
 
-# Scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_alarm_time, 'interval', minutes=1, id='check_alarm')
-scheduler.add_job(escalate_alarm, 'interval', minutes=5, id='escalation')
+scheduler.add_job(do_escalate, 'interval', minutes=5, id='escalation')
 scheduler.start()
 
 if __name__ == '__main__':
