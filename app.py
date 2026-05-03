@@ -224,6 +224,25 @@ def set_reminders():
     alarm_state["reminders"] = data.get("reminders", "")
     return jsonify({"success": True})
 
+@app.route('/api/upcoming')
+def upcoming():
+    try:
+        events = get_calendar_events()
+        return jsonify({"events": [{"summary": e.get("summary","Event"), "start": e["start"].get("dateTime", e["start"].get("date"))} for e in events]})
+    except Exception as ex:
+        return jsonify({"events": [], "error": str(ex)})
+
+@app.route('/api/set-alarm', methods=['POST'])
+def set_alarm():
+    global alarm_state
+    data = request.get_json()
+    wake_time = data.get('time', '06:30')
+    reminders = data.get('reminders', '')
+    alarm_state['reminders'] = reminders
+    hour, minute = map(int, wake_time.split(':'))
+    scheduler.reschedule_job('main_alarm', trigger='cron', hour=hour, minute=minute)
+    return jsonify({"success": True, "time": wake_time})
+
 # ── Scheduler ───────────────────────────────────────────
 
 scheduler = BackgroundScheduler()
