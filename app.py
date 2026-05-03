@@ -32,7 +32,7 @@ def get_calendar_events():
         scopes=['https://www.googleapis.com/auth/calendar.readonly']
     )
     service = build('calendar', 'v3', credentials=creds)
-    now = datetime.datetime.utcnow().isoformat() + 'Z'
+    now = (datetime.datetime.utcnow() - datetime.timedelta(hours=12)).isoformat() + 'Z'
     end = (datetime.datetime.utcnow() + datetime.timedelta(hours=18)).isoformat() + 'Z'
     events_result = service.events().list(
         calendarId=os.getenv('GOOGLE_CALENDAR_ID', 'primary'),
