@@ -32,20 +32,19 @@ alarm_state = {
 
 def get_calendar_events():
     creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    
+    token_json = os.getenv('GOOGLE_TOKEN')
+    if token_json:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+    
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
+            raise Exception("No valid credentials available")
 
     service = build('calendar', 'v3', credentials=creds)
-    
-    # Get today's events in local time
+
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     end = (datetime.datetime.utcnow() + datetime.timedelta(hours=18)).isoformat() + 'Z'
 
