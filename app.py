@@ -159,7 +159,7 @@ def trigger_alarm():
         print(f"Calendar error: {e}")
         alarm_state["events"] = []
 
-    message = generate_wakeup_message(events if events else [], 1)
+    message = generate_wakeup_message(alarm_state["events"], 1)
     alarm_state["active"] = True
     alarm_state["confirmed"] = False
     alarm_state["escalation_level"] = 1
